@@ -1,8 +1,19 @@
 
-import math
-import random
+from math import tanh
+from random import random
 
-random.seed(0)
+class Connection(object):
+
+    def __init__(self):
+        self.weight = random() * 2. - 1.
+        self.delta = 0.0
+
+    def update(self, eta, alpha, delta):
+        self.weight += eta * delta + alpha * self.delta
+        self.delta = delta
+
+    def __repr__(self):
+        return "Connection(weight=%s, delta=%s)" % (self.weight, self.delta)
 
 class SkyNet(object):
 
@@ -16,7 +27,7 @@ class SkyNet(object):
             a custom momentum or learning rate.
         """
         
-        self.activation_fn = activation_fn or math.tanh
+        self.activation_fn = activation_fn or tanh
         self.activation_derivative = activation_derivative or (lambda x: 1-x*x)
 
         self.eta = eta
@@ -32,29 +43,15 @@ class SkyNet(object):
         self.hidden_neurons = [1.0] * self.nb_hidden
         self.output_neurons = [1.0] * self.nb_output
 
-        def create_matrix(x, y):
-            m = []
-            for i in range(x):
-                m.append([0.0]*y)
-            return m
-
-        # Create weights with random values in [-1-1].
-        self.input_weights = create_matrix(self.nb_input, self.nb_hidden)
-        self.output_weights = create_matrix(self.nb_hidden, self.nb_output)
-        for i in range(self.nb_input):
-            for j in range(self.nb_hidden):
-                self.input_weights[i][j] = random.random() * 2. - 1.
-        for j in range(self.nb_hidden):
-            for k in range(self.nb_output):
-                self.output_weights[j][k] = random.random() * 2. - 1.
-
         # Init neurons' gradients to 0.
         self.output_gradients = [0.0] * self.nb_output
         self.hidden_gradients = [0.0] * self.nb_hidden
 
-        # Store delta weight for the previous feed.
-        self.input_deltas = create_matrix(self.nb_input, self.nb_hidden)
-        self.output_deltas = create_matrix(self.nb_hidden, self.nb_output)
+        def create_matrix(x, y):
+            return [[Connection() for j in range(y)] for i in range(x)]
+
+        self.input_weights = create_matrix(self.nb_input, self.nb_hidden)
+        self.hidden_weights = create_matrix(self.nb_hidden, self.nb_output)
 
     def feed_forward(self, inputs):
         """ Feeds the network with the given `inputs` from the input layer
@@ -71,19 +68,21 @@ class SkyNet(object):
         for j in range(self.nb_hidden - 1):
             total = 0.0
             for i in range(self.nb_input):
-                total += self.input_neurons[i] * self.input_weights[i][j]
+                total += self.input_neurons[i] * self.input_weights[i][j].weight
             self.hidden_neurons[j] = self.activation_fn(total)
 
         # output activations
         for k in range(self.nb_output):
             total = 0.0
             for j in range(self.nb_hidden):
-                total += self.hidden_neurons[j] * self.output_weights[j][k]
+                total += self.hidden_neurons[j] * self.hidden_weights[j][k].weight
             self.output_neurons[k] = self.activation_fn(total)
-        
+
         return self.output_neurons
 
     def back_propagate(self, targets):
+        """ Update weights according targets. """
+
         if len(targets) != self.nb_output:
             raise ValueError("Targets size should be %d." % self.nb_output)
 
@@ -96,26 +95,22 @@ class SkyNet(object):
         for i in range(self.nb_hidden):
             error = 0.0
             for j in range(self.nb_output):
-                error += self.output_gradients[j] * self.output_weights[i][j]
-            self.hidden_gradients[i] = self.activation_derivative(self.hidden_neurons[i]) * error
+                error += self.output_gradients[j] * \
+                    self.hidden_weights[i][j].weight
+            self.hidden_gradients[i] = \
+                self.activation_derivative(self.hidden_neurons[i]) * error
 
-        # Update output weights.
+        # Update hidden from output.
         for i in range(self.nb_hidden):
             for j in range(self.nb_output):
                 delta = self.output_gradients[j] * self.hidden_neurons[i]
-                self.output_weights[i][j] += \
-                    self.eta * delta + \
-                    self.alpha * self.output_deltas[j][j]
-                self.output_deltas[i][j] = delta
+                self.hidden_weights[i][j].update(self.eta, self.alpha, delta)
 
-        # Update input weights.
+        # Update input from hidden.
         for i in range(self.nb_input):
             for j in range(self.nb_hidden):
-                delta = self.hidden_gradients[j]*self.input_neurons[i]
-                self.input_weights[i][j] += \
-                    self.eta * delta + \
-                    self.alpha * self.input_deltas[i][j]
-                self.input_deltas[i][j] = delta
+                delta = self.hidden_gradients[j] * self.input_neurons[i]
+                self.input_weights[i][j].update(self.eta, self.alpha, delta)
 
         # Compute error between target and output neurons.
         error = 0.0

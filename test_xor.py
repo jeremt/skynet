@@ -1,5 +1,8 @@
 
 from skynet import SkyNet
+from random import seed
+
+seed(0)
 
 class PatternTeacher(object):
 

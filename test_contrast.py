@@ -44,8 +44,8 @@ class Window(QtGui.QWidget):
         QtGui.QWidget.__init__(self)
 
         self.net = SkyNet(
-            nb_input=3, nb_hidden=4, nb_output=1,
-            eta=0.2, alpha=0.02,
+            nb_input=3, nb_hidden=2, nb_output=1,
+            eta=0.5, alpha=0.1,
             )
 
         teacher = ColorTeacher(self.net)
